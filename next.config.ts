@@ -5,6 +5,7 @@ import path from 'node:path';
 export default function createNextConfig(phase: string): NextConfig {
   return {
     output: 'standalone',
+    outputFileTracingRoot: path.resolve(process.cwd()),
     distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
     reactStrictMode: true,
     eslint: {
