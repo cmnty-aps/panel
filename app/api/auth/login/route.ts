@@ -5,13 +5,14 @@ import { validateEmail } from '@/lib/security';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as {
-      email?: string;
-      password?: string;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
-    const email = validateEmail(body.email || '');
-    const password = body.password || '';
+    const rawEmail = typeof body.email === 'string' ? body.email : '';
+    const email = validateEmail(rawEmail);
+    const password = typeof body.password === 'string' ? body.password : '';
     if (!password) {
       return NextResponse.json({ error: 'Password wajib diisi.' }, { status: 400 });
     }

@@ -27,6 +27,10 @@ function clampPct(value: number, max: number): number {
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
 }
 
+function safeNum(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 export default function HostResourcesView() {
   const { hostInfo, loadingData, lastHostSnapshotAt, refreshHostInfo } = usePanel();
   const lastSnapshotRef = useRef(lastHostSnapshotAt);
@@ -97,7 +101,7 @@ export default function HostResourcesView() {
                 <span>Penggunaan CPU</span>
               </span>
               <span className="font-mono text-[11px] font-semibold text-zinc-900 dark:text-zinc-100 tabular-nums">
-                {hostInfo ? `${hostInfo.hostCpuPercent.toFixed(1)}%` : '—'}
+                {hostInfo ? `${safeNum(hostInfo.hostCpuPercent).toFixed(1)}%` : '—'}
               </span>
             </div>
             <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
@@ -234,12 +238,12 @@ export default function HostResourcesView() {
                 className="font-mono text-zinc-800 dark:text-zinc-200 tabular-nums truncate text-right"
                 title={
                   hostInfo
-                    ? `${hostInfo.allocatedMemoryMb} MB aktif (${hostInfo.panelMemoryUsedMb.toFixed(1)} MB RSS) · Sisa ${hostInfo.availableMemoryMb} MB`
+                    ? `${hostInfo.allocatedMemoryMb} MB aktif (${safeNum(hostInfo.panelMemoryUsedMb).toFixed(1)} MB RSS) · Sisa ${hostInfo.availableMemoryMb} MB`
                     : undefined
                 }
               >
                 {hostInfo
-                  ? `${hostInfo.panelMemoryUsedMb.toFixed(1)} / ${hostInfo.allocatedMemoryMb} MB · Sisa ${hostInfo.availableMemoryMb} MB`
+                  ? `${safeNum(hostInfo.panelMemoryUsedMb).toFixed(1)} / ${hostInfo.allocatedMemoryMb} MB · Sisa ${hostInfo.availableMemoryMb} MB`
                   : '—'}
               </span>
             </div>
@@ -249,12 +253,12 @@ export default function HostResourcesView() {
                 className="font-mono text-zinc-800 dark:text-zinc-200 tabular-nums truncate text-right"
                 title={
                   hostInfo
-                    ? `${hostInfo.allocatedCpuPercent}% / ${totalCpuLimit}% kuota (${hostInfo.panelCpuPercent.toFixed(1)}% terpakai) · Sisa ${hostInfo.availableCpuPercent}%`
+                    ? `${hostInfo.allocatedCpuPercent}% / ${totalCpuLimit}% kuota (${safeNum(hostInfo.panelCpuPercent).toFixed(1)}% terpakai) · Sisa ${hostInfo.availableCpuPercent}%`
                     : undefined
                 }
               >
                 {hostInfo
-                  ? `${hostInfo.allocatedCpuPercent}% / ${totalCpuLimit}% (${hostInfo.panelCpuPercent.toFixed(1)}%) · Sisa ${hostInfo.availableCpuPercent}%`
+                  ? `${hostInfo.allocatedCpuPercent}% / ${totalCpuLimit}% (${safeNum(hostInfo.panelCpuPercent).toFixed(1)}%) · Sisa ${hostInfo.availableCpuPercent}%`
                   : '—'}
               </span>
             </div>

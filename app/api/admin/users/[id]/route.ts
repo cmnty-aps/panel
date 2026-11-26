@@ -26,17 +26,15 @@ export async function PATCH(
   }
 
   try {
-    const body = (await req.json()) as {
-      name?: string;
-      email?: string;
-      role?: UserRole;
-      password?: string;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
     const patch: Parameters<typeof updateUserRecord>[1] = {};
 
     if (body.name !== undefined) {
-      const name = body.name.trim();
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (name.length < 2 || name.length > 60) {
         return NextResponse.json(
           { error: 'Nama lengkap harus antara 2 hingga 60 karakter.' },
@@ -47,6 +45,9 @@ export async function PATCH(
     }
 
     if (body.email !== undefined) {
+      if (typeof body.email !== 'string') {
+        return NextResponse.json({ error: 'Email tidak valid.' }, { status: 400 });
+      }
       patch.email = validateEmail(body.email);
     }
 
@@ -62,7 +63,12 @@ export async function PATCH(
     }
 
     if (body.password !== undefined && body.password !== '') {
-      if (!body.password.trim() || body.password.length < 6 || body.password.length > 128) {
+      if (
+        typeof body.password !== 'string' ||
+        !body.password.trim() ||
+        body.password.length < 6 ||
+        body.password.length > 128
+      ) {
         return NextResponse.json(
           { error: 'Password baru minimal 6 karakter dan tidak boleh hanya spasi.' },
           { status: 400 }

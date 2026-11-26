@@ -134,9 +134,13 @@ export default function PanelShell({ children }: { children: React.ReactNode }) 
           ? prev
           : nextUser
       );
-      setServers(srvRes.servers);
-      setHostInfo(hostRes.host);
-      setLastHostSnapshotAt(Date.now());
+      if (Array.isArray(srvRes.servers)) {
+        setServers(srvRes.servers);
+      }
+      if (hostRes.host) {
+        setHostInfo(hostRes.host);
+        setLastHostSnapshotAt(Date.now());
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setAuthToken(null);
@@ -163,7 +167,6 @@ export default function PanelShell({ children }: { children: React.ReactNode }) 
         if (!mounted) return;
         if (res.user) {
           setUser(res.user);
-          setLoadingData(true);
         } else {
           const currentPath =
             typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -326,9 +329,25 @@ export default function PanelShell({ children }: { children: React.ReactNode }) 
 
   const handleMetricsUpdate = useCallback(
     (serverId: string, metrics: ServerRuntimeMetrics) => {
-      setServers((prev) =>
-        prev.map((s) => (s.id === serverId ? { ...s, metrics } : s))
-      );
+      setServers((prev) => {
+        const idx = prev.findIndex((s) => s.id === serverId);
+        if (idx === -1) return prev;
+        const cur = prev[idx].metrics;
+        if (
+          cur.status === metrics.status &&
+          cur.uptimeSeconds === metrics.uptimeSeconds &&
+          cur.cpuPercent === metrics.cpuPercent &&
+          cur.memoryMb === metrics.memoryMb &&
+          cur.networkRxBytesPerSec === metrics.networkRxBytesPerSec &&
+          cur.networkTxBytesPerSec === metrics.networkTxBytesPerSec &&
+          Boolean(cur.awaitingInput) === Boolean(metrics.awaitingInput)
+        ) {
+          return prev;
+        }
+        const next = [...prev];
+        next[idx] = { ...prev[idx], metrics };
+        return next;
+      });
     },
     []
   );

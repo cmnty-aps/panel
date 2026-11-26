@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -9,7 +9,7 @@ import ServerConsoleTab from './server-console';
 import ServerFilesTab from './server-files';
 import ServerSettingsTab from './server-settings';
 import { ServerWorkspaceSkeleton } from './skeletons';
-import type { ServerWithMetrics } from '@/lib/types';
+import type { ServerRuntimeMetrics, ServerWithMetrics } from '@/lib/types';
 
 interface ServerWorkspaceViewProps {
   serverId: string;
@@ -31,13 +31,29 @@ export default function ServerWorkspaceView({
     upsertServer,
   } = usePanel();
 
-  const server = servers.find((s) => s.id === serverId) || null;
   const isDeleted = deletedServerIds.includes(serverId);
+  const liveServer = isDeleted ? null : servers.find((s) => s.id === serverId) || null;
+  const [cachedEntry, setCachedEntry] = useState<{ id: string; server: ServerWithMetrics } | null>(
+    () => (liveServer ? { id: serverId, server: liveServer } : null)
+  );
   const [checkedServerId, setCheckedServerId] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const [notFoundServerId, setNotFoundServerId] = useState<string | null>(null);
+
+  if (
+    liveServer &&
+    !isDeleted &&
+    (cachedEntry?.id !== serverId || cachedEntry.server !== liveServer)
+  ) {
+    setCachedEntry({ id: serverId, server: liveServer });
+  }
+
+  const notFound = !liveServer && notFoundServerId === serverId;
+  const server = isDeleted
+    ? null
+    : liveServer || (cachedEntry?.id === serverId && !notFound ? cachedEntry.server : null);
 
   useEffect(() => {
-    if (server || isDeleted || loadingData || checkedServerId === serverId) return;
+    if (liveServer || isDeleted || loadingData || checkedServerId === serverId) return;
 
     let active = true;
 
@@ -49,11 +65,13 @@ export default function ServerWorkspaceView({
         if (!active) return;
         if (res.server) {
           upsertServer(res.server);
+          setCachedEntry({ id: serverId, server: res.server });
+          setNotFoundServerId((prev) => (prev === serverId ? null : prev));
         } else {
-          setNotFound(true);
+          setNotFoundServerId(serverId);
         }
       } catch {
-        if (active) setNotFound(true);
+        if (active) setNotFoundServerId(serverId);
       } finally {
         if (active) setCheckedServerId(serverId);
       }
@@ -63,7 +81,14 @@ export default function ServerWorkspaceView({
     return () => {
       active = false;
     };
-  }, [server, isDeleted, loadingData, serverId, checkedServerId, upsertServer]);
+  }, [liveServer, isDeleted, loadingData, serverId, checkedServerId, upsertServer]);
+
+  const handleConsoleMetricsUpdate = useCallback(
+    (m: ServerRuntimeMetrics) => {
+      handleMetricsUpdate(serverId, m);
+    },
+    [handleMetricsUpdate, serverId]
+  );
 
   if (!server) {
     if (isDeleted || loadingData || checkedServerId !== serverId) {
@@ -133,7 +158,7 @@ export default function ServerWorkspaceView({
         <ServerConsoleTab
           key={server.id}
           server={server}
-          onMetricsUpdate={(m) => handleMetricsUpdate(server.id, m)}
+          onMetricsUpdate={handleConsoleMetricsUpdate}
         />
       )}
       {activeTab === 'files' && (

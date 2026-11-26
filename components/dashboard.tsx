@@ -141,9 +141,13 @@ export default function ServersDashboardView() {
 
                 <div className="pt-4 mt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="font-mono text-zinc-500 text-[11px] flex items-center gap-2 min-w-0">
-                    <span>CPU: {srv.metrics.cpuPercent.toFixed(1)}%</span>
+                    <span>
+                      CPU: {(Number.isFinite(srv.metrics.cpuPercent) ? srv.metrics.cpuPercent : 0).toFixed(1)}%
+                    </span>
                     <span>·</span>
-                    <span>RAM: {srv.metrics.memoryMb.toFixed(1)}MB</span>
+                    <span>
+                      RAM: {(Number.isFinite(srv.metrics.memoryMb) ? srv.metrics.memoryMb : 0).toFixed(1)}MB
+                    </span>
                   </div>
                   <span className="font-medium text-zinc-900 dark:text-zinc-100 group-hover:underline text-xs shrink-0">
                     Kelola &rarr;

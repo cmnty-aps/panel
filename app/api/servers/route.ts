@@ -41,22 +41,18 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
-    const body = (await req.json()) as {
-      ownerId?: string;
-      name?: string;
-      description?: string;
-      runtime?: ServerRuntime;
-      startupCommand?: string;
-      port?: number | string;
-      memoryLimitMb?: number;
-      cpuLimitPercent?: number;
-      autoRestart?: boolean;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
     let targetOwnerId = auth.user.id;
-    if (body.ownerId !== undefined && body.ownerId.trim() !== '') {
+    if (body.ownerId !== undefined && body.ownerId !== null && body.ownerId !== '') {
+      if (typeof body.ownerId !== 'string') {
+        return NextResponse.json({ error: 'ID pemilik tidak valid.' }, { status: 400 });
+      }
       const requestedOwnerId = body.ownerId.trim();
-      if (requestedOwnerId !== auth.user.id) {
+      if (requestedOwnerId !== '' && requestedOwnerId !== auth.user.id) {
         if (auth.user.role !== 'admin') {
           return NextResponse.json(
             { error: 'Hanya administrator yang dapat membuat server untuk user lain.' },
@@ -74,10 +70,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const name = validateServerName(body.name || '');
+    const name = validateServerName(typeof body.name === 'string' ? body.name : '');
     const runtime: ServerRuntime = body.runtime === 'python' ? 'python' : 'nodejs';
     const defaultCommand = runtime === 'nodejs' ? 'node index.js' : 'python3 -u main.py';
-    const startupCommand = (body.startupCommand || defaultCommand).trim();
+    if (body.startupCommand !== undefined && typeof body.startupCommand !== 'string') {
+      return NextResponse.json({ error: 'Startup command harus berupa teks.' }, { status: 400 });
+    }
+    const startupCommand = (typeof body.startupCommand === 'string' && body.startupCommand.trim()
+      ? body.startupCommand
+      : defaultCommand
+    ).trim();
     parseSafeStartupCommand(startupCommand, runtime);
 
     const host = getHostInfo();
@@ -143,15 +145,18 @@ export async function POST(req: NextRequest) {
 
     const usedPorts = listAllServers().map((s) => s.port);
     const hasCustomPort =
-      body.port !== undefined && body.port !== null && String(body.port).trim() !== '';
+      body.port !== undefined &&
+      body.port !== null &&
+      (typeof body.port === 'number' || typeof body.port === 'string') &&
+      String(body.port).trim() !== '';
     const port = hasCustomPort
-      ? validateServerPort(body.port, usedPorts)
+      ? validateServerPort(body.port as number | string, usedPorts)
       : allocateNextPort(usedPorts);
 
     const server = await createServerRecord({
       ownerId: targetOwnerId,
       name,
-      description: (body.description || '').trim().slice(0, 160),
+      description: (typeof body.description === 'string' ? body.description : '').trim().slice(0, 160),
       runtime,
       startupCommand,
       port,

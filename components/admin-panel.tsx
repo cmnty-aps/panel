@@ -829,10 +829,10 @@ export default function AdminPanelTab({
                           <div className="min-w-0 font-mono text-zinc-600 dark:text-zinc-400">
                             <div className="font-sans text-zinc-500">Resource</div>
                             <div className="truncate">
-                              {srv.metrics.memoryMb.toFixed(0)} / {srv.memoryLimitMb} MB
+                              {(Number.isFinite(srv.metrics.memoryMb) ? srv.metrics.memoryMb : 0).toFixed(0)} / {srv.memoryLimitMb} MB
                             </div>
                             <div className="truncate">
-                              CPU {srv.metrics.cpuPercent.toFixed(1)}% / {srv.cpuLimitPercent}%
+                              CPU {(Number.isFinite(srv.metrics.cpuPercent) ? srv.metrics.cpuPercent : 0).toFixed(1)}% / {srv.cpuLimitPercent}%
                             </div>
                           </div>
                         </div>
@@ -966,10 +966,10 @@ export default function AdminPanelTab({
                             </td>
                             <td className="py-3 px-4 font-mono text-[11px] text-zinc-600 dark:text-zinc-400 whitespace-nowrap">
                               <div>
-                                {srv.metrics.memoryMb.toFixed(0)} / {srv.memoryLimitMb} MB
+                                {(Number.isFinite(srv.metrics.memoryMb) ? srv.metrics.memoryMb : 0).toFixed(0)} / {srv.memoryLimitMb} MB
                               </div>
                               <div>
-                                CPU {srv.metrics.cpuPercent.toFixed(1)}% / {srv.cpuLimitPercent}%
+                                CPU {(Number.isFinite(srv.metrics.cpuPercent) ? srv.metrics.cpuPercent : 0).toFixed(1)}% / {srv.cpuLimitPercent}%
                               </div>
                             </td>
                             <td className="py-3 px-4">

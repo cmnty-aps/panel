@@ -19,7 +19,15 @@ export const SERVERS_ROOT = path.join(DATA_ROOT, 'servers');
 const globalForDb = globalThis as unknown as {
   __nodalDbLock?: Promise<void>;
   __cmntyEnvAdminSig?: string;
+  __cmntyLastGoodDb?: DatabaseState;
 };
+
+function cloneDatabaseState(state: DatabaseState): DatabaseState {
+  return {
+    users: state.users.map((u) => ({ ...u })),
+    servers: state.servers.map((s) => ({ ...s })),
+  };
+}
 
 function readEnvAdminConfig(): { name: string; email: string; password: string } | null {
   const email = (process.env.ADMIN_EMAIL ?? process.env.admin_email ?? '').trim().toLowerCase();
@@ -104,26 +112,41 @@ function ensureDirs(): void {
 function readDbSync(): DatabaseState {
   ensureDirs();
   if (!fs.existsSync(DB_PATH)) {
+    if (globalForDb.__cmntyLastGoodDb) {
+      return cloneDatabaseState(globalForDb.__cmntyLastGoodDb);
+    }
     const initial: DatabaseState = { users: [], servers: [] };
     writeDbSync(initial);
     syncEnvAdminOnState(initial);
+    globalForDb.__cmntyLastGoodDb = cloneDatabaseState(initial);
     return initial;
   }
 
-  try {
-    const raw = fs.readFileSync(DB_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<DatabaseState>;
-    const state: DatabaseState = {
-      users: Array.isArray(parsed.users) ? parsed.users : [],
-      servers: Array.isArray(parsed.servers) ? parsed.servers : [],
-    };
-    syncEnvAdminOnState(state);
-    return state;
-  } catch {
-    const fallback: DatabaseState = { users: [], servers: [] };
-    syncEnvAdminOnState(fallback);
-    return fallback;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const raw = fs.readFileSync(DB_PATH, 'utf8');
+      const parsed = JSON.parse(raw) as Partial<DatabaseState> | null;
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid database structure');
+      }
+      const state: DatabaseState = {
+        users: Array.isArray(parsed.users) ? parsed.users : [],
+        servers: Array.isArray(parsed.servers) ? parsed.servers : [],
+      };
+      syncEnvAdminOnState(state);
+      globalForDb.__cmntyLastGoodDb = cloneDatabaseState(state);
+      return state;
+    } catch (err) {
+      lastErr = err;
+    }
   }
+
+  console.warn('[cmnty-db] Transient error reading database file, preserving last-known state:', lastErr);
+  if (globalForDb.__cmntyLastGoodDb) {
+    return cloneDatabaseState(globalForDb.__cmntyLastGoodDb);
+  }
+  return { users: [], servers: [] };
 }
 
 function writeDbSync(state: DatabaseState): void {
@@ -131,6 +154,7 @@ function writeDbSync(state: DatabaseState): void {
   const tmpPath = `${DB_PATH}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf8');
   fs.renameSync(tmpPath, DB_PATH);
+  globalForDb.__cmntyLastGoodDb = cloneDatabaseState(state);
 }
 
 async function withWriteLock<T>(fn: () => T | Promise<T>): Promise<T> {

@@ -53,6 +53,26 @@ interface MetricSample {
   tx: number;
 }
 
+const CHART_MARGIN_DEFAULT = { top: 10, right: 8, left: -4, bottom: 6 };
+const CHART_MARGIN_NET = { top: 10, right: 8, left: 2, bottom: 6 };
+const CHART_AXIS_TICK = { fill: '#71717a', fontSize: 11 };
+
+function formatCpuAxisTick(val: number): string {
+  return `${(Number.isFinite(val) ? val : 0).toFixed(2)}%`;
+}
+
+function formatRamAxisTick(val: number): string {
+  return `${Math.round(Number.isFinite(val) ? val : 0)}MiB`;
+}
+
+function formatNetAxisTick(val: number): string {
+  return formatNetworkAxisBytes(Number.isFinite(val) ? val : 0);
+}
+
+function safeFinite(val: unknown, fallback = 0): number {
+  return typeof val === 'number' && Number.isFinite(val) ? val : fallback;
+}
+
 function useMeasuredChartWidth(ref: React.RefObject<HTMLDivElement | null>, fallback = 260): number {
   const [width, setWidth] = useState(fallback);
 
@@ -63,7 +83,7 @@ function useMeasuredChartWidth(ref: React.RefObject<HTMLDivElement | null>, fall
     const updateWidth = () => {
       const next = Math.floor(el.getBoundingClientRect().width);
       if (next > 40) {
-        setWidth(next);
+        setWidth((prev) => (prev === next ? prev : next));
       }
     };
 
@@ -192,10 +212,10 @@ export default function ServerConsoleTab({
     {
       idx: 0,
       time: formatTimeLabel(),
-      cpu: Number(server.metrics.cpuPercent.toFixed(2)),
-      ram: Number(server.metrics.memoryMb.toFixed(1)),
-      rx: Math.max(0, Math.round(server.metrics.networkRxBytesPerSec || 0)),
-      tx: Math.max(0, Math.round(server.metrics.networkTxBytesPerSec || 0)),
+      cpu: Number(safeFinite(server.metrics.cpuPercent).toFixed(2)),
+      ram: Number(safeFinite(server.metrics.memoryMb).toFixed(1)),
+      rx: Math.max(0, Math.round(safeFinite(server.metrics.networkRxBytesPerSec))),
+      tx: Math.max(0, Math.round(safeFinite(server.metrics.networkTxBytesPerSec))),
     },
   ]);
   const [command, setCommand] = useState('');
@@ -227,15 +247,16 @@ export default function ServerConsoleTab({
   }, [onMetricsUpdate]);
 
   const appendMetricSample = (nextMetrics: ServerRuntimeMetrics) => {
+    if (!nextMetrics || typeof nextMetrics !== 'object') return;
     const nextIdx = sampleIndexRef.current;
     sampleIndexRef.current += 1;
     const sample: MetricSample = {
       idx: nextIdx,
       time: formatTimeLabel(),
-      cpu: Number((Number.isFinite(nextMetrics.cpuPercent) ? nextMetrics.cpuPercent : 0).toFixed(2)),
-      ram: Number((Number.isFinite(nextMetrics.memoryMb) ? nextMetrics.memoryMb : 0).toFixed(1)),
-      rx: Math.max(0, Math.round(Number.isFinite(nextMetrics.networkRxBytesPerSec) ? nextMetrics.networkRxBytesPerSec : 0)),
-      tx: Math.max(0, Math.round(Number.isFinite(nextMetrics.networkTxBytesPerSec) ? nextMetrics.networkTxBytesPerSec : 0)),
+      cpu: Number(safeFinite(nextMetrics.cpuPercent).toFixed(2)),
+      ram: Number(safeFinite(nextMetrics.memoryMb).toFixed(1)),
+      rx: Math.max(0, Math.round(safeFinite(nextMetrics.networkRxBytesPerSec))),
+      tx: Math.max(0, Math.round(safeFinite(nextMetrics.networkTxBytesPerSec))),
     };
     setMetricsHistory((prev) => [...prev.slice(-29), sample]);
   };
@@ -270,7 +291,7 @@ export default function ServerConsoleTab({
           setLogs((prev) => upsertConsoleLineList(prev, nextLine, 400));
         } else if (eventName === 'clear') {
           setLogs([]);
-        } else if (eventName === 'metrics') {
+        } else if (eventName === 'metrics' && parsed && typeof parsed === 'object') {
           const nextMetrics = parsed as ServerRuntimeMetrics;
           setStreamMetrics(nextMetrics);
           appendMetricSample(nextMetrics);
@@ -344,12 +365,13 @@ export default function ServerConsoleTab({
       metrics.startedAt && Number.isFinite(Date.parse(metrics.startedAt))
         ? Date.parse(metrics.startedAt)
         : fallbackAnchorMs;
-    return Math.max(metrics.uptimeSeconds, Math.floor((liveNowMs - anchor) / 1000));
+    const baseUptime = Math.max(0, safeFinite(metrics.uptimeSeconds));
+    return Math.max(0, baseUptime, Math.floor((liveNowMs - anchor) / 1000));
   }, [isMetricsActive, metrics.startedAt, metrics.uptimeSeconds, liveNowMs, fallbackAnchorMs]);
 
   useEffect(() => {
     if (canSendInput) {
-      commandInputRef.current?.focus();
+      commandInputRef.current?.focus({ preventScroll: true });
     }
   }, [server.id, canSendInput]);
 
@@ -428,7 +450,7 @@ export default function ServerConsoleTab({
       };
       if (action === 'start' || action === 'restart') {
         void showSuccessToast(toastMap[action]);
-        commandInputRef.current?.focus();
+        commandInputRef.current?.focus({ preventScroll: true });
       } else {
         void showInfoToast(toastMap[action]);
       }
@@ -488,7 +510,7 @@ export default function ServerConsoleTab({
         err instanceof Error ? err.message : 'Gagal mengirim perintah ke console.'
       );
     } finally {
-      commandInputRef.current?.focus();
+      commandInputRef.current?.focus({ preventScroll: true });
     }
   }
 
@@ -543,7 +565,7 @@ export default function ServerConsoleTab({
         err instanceof Error ? err.message : 'Terjadi kesalahan saat membersihkan console.'
       );
     } finally {
-      commandInputRef.current?.focus();
+      commandInputRef.current?.focus({ preventScroll: true });
     }
   }
 
@@ -706,7 +728,7 @@ export default function ServerConsoleTab({
               if (!canSendInput) return;
               const selected = window.getSelection()?.toString();
               if (!selected) {
-                commandInputRef.current?.focus();
+                commandInputRef.current?.focus({ preventScroll: true });
               }
             }}
             className="h-[340px] sm:h-[420px] overflow-y-auto overflow-x-hidden p-3 sm:p-4 font-mono text-[12px] leading-5 space-y-0.5 text-zinc-200 bg-[#09090B] cursor-text"
@@ -749,7 +771,7 @@ export default function ServerConsoleTab({
         <form
           onSubmit={handleSendCommand}
           onClick={() => {
-            if (canSendInput) commandInputRef.current?.focus();
+            if (canSendInput) commandInputRef.current?.focus({ preventScroll: true });
           }}
           className={`group border-t border-zinc-800/90 bg-[#0C0C0E] px-3 sm:px-3.5 h-10 flex items-center gap-2 font-mono text-xs transition-colors ${
             canSendInput ? 'focus-within:bg-[#111114] cursor-text' : 'opacity-60 cursor-not-allowed'
@@ -812,7 +834,7 @@ export default function ServerConsoleTab({
               CPU Load
             </div>
             <div className="text-sm sm:text-[15px] font-mono font-semibold text-zinc-900 dark:text-zinc-100 tabular-nums mt-0.5 truncate">
-              {metrics.cpuPercent.toFixed(2)}%{' '}
+              {safeFinite(metrics.cpuPercent).toFixed(2)}%{' '}
               <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
                 / {server.cpuLimitPercent}%
               </span>
@@ -824,7 +846,7 @@ export default function ServerConsoleTab({
               Memory
             </div>
             <div className="text-sm sm:text-[15px] font-mono font-semibold text-zinc-900 dark:text-zinc-100 tabular-nums mt-0.5 truncate">
-              {formatMemoryValue(metrics.memoryMb)}{' '}
+              {formatMemoryValue(safeFinite(metrics.memoryMb))}{' '}
               <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
                 / {formatMemoryLimit(server.memoryLimitMb)}
               </span>
@@ -846,7 +868,7 @@ export default function ServerConsoleTab({
                 height={176}
                 data={chartData}
                 accessibilityLayer={false}
-                margin={{ top: 10, right: 8, left: -4, bottom: 6 }}
+                margin={CHART_MARGIN_DEFAULT}
               >
                 <defs>
                   <linearGradient
@@ -873,8 +895,8 @@ export default function ServerConsoleTab({
                   axisLine={false}
                   tickLine={false}
                   width={56}
-                  tick={{ fill: '#71717a', fontSize: 11 }}
-                  tickFormatter={(val: number) => `${val.toFixed(2)}%`}
+                  tick={CHART_AXIS_TICK}
+                  tickFormatter={formatCpuAxisTick}
                 />
                 <Area
                   type="monotone"
@@ -903,7 +925,7 @@ export default function ServerConsoleTab({
                 height={176}
                 data={chartData}
                 accessibilityLayer={false}
-                margin={{ top: 10, right: 8, left: -4, bottom: 6 }}
+                margin={CHART_MARGIN_DEFAULT}
               >
                 <defs>
                   <linearGradient
@@ -930,8 +952,8 @@ export default function ServerConsoleTab({
                   axisLine={false}
                   tickLine={false}
                   width={58}
-                  tick={{ fill: '#71717a', fontSize: 11 }}
-                  tickFormatter={(val: number) => `${Math.round(val)}MiB`}
+                  tick={CHART_AXIS_TICK}
+                  tickFormatter={formatRamAxisTick}
                 />
                 <Area
                   type="monotone"
@@ -958,14 +980,14 @@ export default function ServerConsoleTab({
                   title="Inbound (Download)"
                 >
                   <CloudDownload className="w-3.5 h-3.5 shrink-0" />
-                  <span>{formatNetworkRateLabel(metrics.networkRxBytesPerSec || 0)}</span>
+                  <span>{formatNetworkRateLabel(safeFinite(metrics.networkRxBytesPerSec))}</span>
                 </span>
                 <span
                   className="inline-flex items-center gap-1 text-cyan-600 dark:text-cyan-400"
                   title="Outbound (Upload)"
                 >
                   <CloudUpload className="w-3.5 h-3.5 shrink-0" />
-                  <span>{formatNetworkRateLabel(metrics.networkTxBytesPerSec || 0)}</span>
+                  <span>{formatNetworkRateLabel(safeFinite(metrics.networkTxBytesPerSec))}</span>
                 </span>
               </div>
             </div>
@@ -978,7 +1000,7 @@ export default function ServerConsoleTab({
                 height={176}
                 data={chartData}
                 accessibilityLayer={false}
-                margin={{ top: 10, right: 8, left: 4, bottom: 6 }}
+                margin={CHART_MARGIN_NET}
               >
                 <defs>
                   <linearGradient
@@ -1014,9 +1036,9 @@ export default function ServerConsoleTab({
                   ticks={netChartTicks}
                   axisLine={false}
                   tickLine={false}
-                  width={64}
-                  tick={{ fill: '#71717a', fontSize: 11 }}
-                  tickFormatter={(val: number) => formatNetworkAxisBytes(val)}
+                  width={58}
+                  tick={CHART_AXIS_TICK}
+                  tickFormatter={formatNetAxisTick}
                 />
                 <Area
                   type="monotone"

@@ -48,71 +48,75 @@ export async function POST(
   if (access.error) return access.error;
 
   try {
-    const body = (await req.json()) as {
-      action: 'write' | 'create' | 'rename' | 'extract' | 'move' | 'archive' | 'moveMany' | 'deleteMany';
-      path?: string;
-      paths?: string[];
-      currentDir?: string;
-      targetDir?: string;
-      content?: string;
-      encoding?: 'utf8' | 'base64';
-      entryType?: 'file' | 'directory';
-      newPath?: string;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
-    if (body.action === 'write') {
+    const action = typeof body.action === 'string' ? body.action : '';
+    const filePath = typeof body.path === 'string' ? body.path : '';
+    const newPath = typeof body.newPath === 'string' ? body.newPath : '';
+    const currentDir = typeof body.currentDir === 'string' ? body.currentDir : '';
+    const targetDir = typeof body.targetDir === 'string' ? body.targetDir : '';
+    const pathsList = Array.isArray(body.paths)
+      ? body.paths.filter((item): item is string => typeof item === 'string')
+      : [];
+
+    if (action === 'write') {
+      if (typeof body.path !== 'string' || (body.content !== undefined && typeof body.content !== 'string')) {
+        return NextResponse.json({ error: 'Path dan konten file harus berupa teks.' }, { status: 400 });
+      }
       writeServerFile(
         id,
-        body.path || '',
-        body.content ?? '',
+        filePath,
+        typeof body.content === 'string' ? body.content : '',
         body.encoding === 'base64' ? 'base64' : 'utf8'
       );
       emitFilesChanged(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'create') {
-      createServerEntry(id, body.path || '', body.entryType === 'directory' ? 'directory' : 'file');
+    if (action === 'create') {
+      createServerEntry(id, filePath, body.entryType === 'directory' ? 'directory' : 'file');
       emitFilesChanged(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'rename') {
-      renameServerEntry(id, body.path || '', body.newPath || '');
+    if (action === 'rename') {
+      renameServerEntry(id, filePath, newPath);
       emitFilesChanged(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'extract') {
-      extractZipFile(id, body.path || '');
+    if (action === 'extract') {
+      extractZipFile(id, filePath);
       emitFilesChanged(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'move') {
-      moveServerEntry(id, body.path || '', body.newPath || '');
+    if (action === 'move') {
+      moveServerEntry(id, filePath, newPath);
       emitFilesChanged(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'archive') {
+    if (action === 'archive') {
       const targetPaths = Array.isArray(body.paths)
-        ? body.paths
-        : body.path
-        ? [body.path]
+        ? pathsList
+        : filePath
+        ? [filePath]
         : [];
-      const archivePath = archiveServerEntries(id, targetPaths, body.currentDir || '');
+      const archivePath = archiveServerEntries(id, targetPaths, currentDir);
       emitFilesChanged(id);
       return NextResponse.json({ ok: true, archivePath });
     }
 
-    if (body.action === 'moveMany') {
-      const targetPaths = Array.isArray(body.paths) ? body.paths : [];
-      if (targetPaths.length === 0) {
+    if (action === 'moveMany') {
+      if (pathsList.length === 0) {
         return NextResponse.json({ error: 'Tidak ada item yang dipilih.' }, { status: 400 });
       }
-      const cleanDir = (body.targetDir || '').replace(/^\/+|\/+$/g, '');
-      for (const itemPath of targetPaths) {
+      const cleanDir = targetDir.replace(/^\/+|\/+$/g, '');
+      for (const itemPath of pathsList) {
         const baseName = itemPath.split('/').pop() || itemPath;
         const destPath = cleanDir ? `${cleanDir}/${baseName}` : baseName;
         moveServerEntry(id, itemPath, destPath);
@@ -121,12 +125,11 @@ export async function POST(
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'deleteMany') {
-      const targetPaths = Array.isArray(body.paths) ? body.paths : [];
-      if (targetPaths.length === 0) {
+    if (action === 'deleteMany') {
+      if (pathsList.length === 0) {
         return NextResponse.json({ error: 'Tidak ada item yang dipilih.' }, { status: 400 });
       }
-      for (const itemPath of targetPaths) {
+      for (const itemPath of pathsList) {
         deleteServerEntry(id, itemPath);
       }
       emitFilesChanged(id);

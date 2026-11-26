@@ -274,6 +274,7 @@ export function writeServerFile(
   if (!fs.existsSync(parent)) {
     fs.mkdirSync(parent, { recursive: true });
   }
+  assertRealContainment(baseDir, parent);
   if (encoding === 'base64') {
     fs.writeFileSync(target, Buffer.from(content, 'base64'));
   } else {
@@ -382,6 +383,7 @@ export function extractZipFile(serverId: string, relPath: string): void {
     if (!fs.existsSync(destParent)) {
       fs.mkdirSync(destParent, { recursive: true });
     }
+    assertRealContainment(baseDir, destParent);
     fs.writeFileSync(destPath, entry.getData());
   }
 }

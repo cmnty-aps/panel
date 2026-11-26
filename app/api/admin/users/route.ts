@@ -30,14 +30,12 @@ export async function POST(req: NextRequest) {
   if (adminCheck.error) return adminCheck.error;
 
   try {
-    const body = (await req.json()) as {
-      name?: string;
-      email?: string;
-      password?: string;
-      role?: UserRole;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
-    const name = (body.name || '').trim();
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (name.length < 2 || name.length > 60) {
       return NextResponse.json(
         { error: 'Nama lengkap harus antara 2 hingga 60 karakter.' },
@@ -45,8 +43,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const email = validateEmail(body.email || '');
-    const password = body.password || '';
+    const email = validateEmail(typeof body.email === 'string' ? body.email : '');
+    const password = typeof body.password === 'string' ? body.password : '';
     if (password.length < 6 || password.length > 128) {
       return NextResponse.json(
         { error: 'Password minimal 6 karakter.' },

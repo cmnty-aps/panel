@@ -61,7 +61,7 @@ export async function GET(
         sendRaw(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
 
-      sendRaw('retry: 1000\n: connected\n\n');
+      sendRaw(`retry: 1000\n: connected\n: ${' '.repeat(2048)}\n\n`);
       sendEvent('history', getConsoleHistory(id));
       sendEvent('metrics', getServerMetrics(id));
 
@@ -113,21 +113,20 @@ export async function POST(
   if (access.error) return access.error;
 
   try {
-    const body = (await req.json()) as {
-      command?: string;
-      action?: 'clear';
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
     if (body.action === 'clear') {
       clearConsoleHistory(id);
       return NextResponse.json({ ok: true });
     }
 
-    if (body.command === undefined || body.command === null) {
-      return NextResponse.json({ error: 'Perintah tidak boleh kosong.' }, { status: 400 });
+    if (typeof body.command !== 'string') {
+      return NextResponse.json({ error: 'Perintah harus berupa teks.' }, { status: 400 });
     }
 
-    const command = typeof body.command === 'string' ? body.command : String(body.command);
-    const result = await sendCommandToServer(id, command);
+    const result = await sendCommandToServer(id, body.command);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Gagal mengirim perintah.';

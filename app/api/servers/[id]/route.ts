@@ -42,16 +42,10 @@ export async function PATCH(
   if (access.error) return access.error;
 
   try {
-    const body = (await req.json()) as {
-      ownerId?: string;
-      name?: string;
-      description?: string;
-      startupCommand?: string;
-      port?: number | string;
-      memoryLimitMb?: number;
-      cpuLimitPercent?: number;
-      autoRestart?: boolean;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
     const host = getHostInfo();
     const currentMetrics = getServerMetrics(id);
@@ -87,23 +81,40 @@ export async function PATCH(
           { status: 403 }
         );
       }
-      const targetUser = getUserById(body.ownerId);
+      if (typeof body.ownerId !== 'string') {
+        return NextResponse.json({ error: 'User pemilik baru tidak valid.' }, { status: 400 });
+      }
+      const targetUser = getUserById(body.ownerId.trim());
       if (!targetUser) {
         return NextResponse.json({ error: 'User pemilik baru tidak ditemukan.' }, { status: 400 });
       }
       patch.ownerId = targetUser.id;
     }
     if (body.name !== undefined) {
+      if (typeof body.name !== 'string') {
+        return NextResponse.json({ error: 'Nama server harus berupa teks.' }, { status: 400 });
+      }
       patch.name = validateServerName(body.name);
     }
     if (body.description !== undefined) {
-      patch.description = String(body.description).trim().slice(0, 160);
+      if (typeof body.description !== 'string') {
+        return NextResponse.json({ error: 'Deskripsi harus berupa teks.' }, { status: 400 });
+      }
+      patch.description = body.description.trim().slice(0, 160);
     }
     if (body.startupCommand !== undefined) {
+      if (typeof body.startupCommand !== 'string') {
+        return NextResponse.json({ error: 'Startup command harus berupa teks.' }, { status: 400 });
+      }
       parseSafeStartupCommand(body.startupCommand, access.server.runtime);
       patch.startupCommand = body.startupCommand.trim();
     }
-    if (body.port !== undefined && body.port !== null && String(body.port).trim() !== '') {
+    if (
+      body.port !== undefined &&
+      body.port !== null &&
+      (typeof body.port === 'number' || typeof body.port === 'string') &&
+      String(body.port).trim() !== ''
+    ) {
       const usedPorts = listAllServers()
         .filter((s) => s.id !== id)
         .map((s) => s.port);
@@ -117,6 +128,8 @@ export async function PATCH(
         }
         patch.port = nextPort;
       }
+    } else if (body.port !== undefined && body.port !== null && typeof body.port !== 'number' && typeof body.port !== 'string') {
+      return NextResponse.json({ error: 'Port server tidak valid.' }, { status: 400 });
     }
     if (body.memoryLimitMb !== undefined) {
       const requestedMem = Number(body.memoryLimitMb);

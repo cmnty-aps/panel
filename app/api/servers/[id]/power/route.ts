@@ -16,9 +16,10 @@ export async function POST(
   if (access.error) return access.error;
 
   try {
-    const body = (await req.json()) as {
-      action?: 'start' | 'stop' | 'restart' | 'kill';
-    };
+    const body = (await req.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload tidak valid.' }, { status: 400 });
+    }
 
     switch (body.action) {
       case 'start':

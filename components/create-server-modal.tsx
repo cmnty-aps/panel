@@ -45,7 +45,12 @@ export default function CreateServerModal({
   const [selectedMemoryMb, setSelectedMemoryMb] = useState<number | null>(null);
   const [selectedCpuPercent, setSelectedCpuPercent] = useState<number | null>(null);
   const [autoRestart, setAutoRestart] = useState(false);
-  const [selectedOwnerId, setSelectedOwnerId] = useState(initialOwnerId || currentUserId);
+  const ownerSelectionKey = `${open}:${initialOwnerId || ''}:${currentUserId}`;
+  const [ownerSelection, setOwnerSelection] = useState<{ key: string; id: string } | null>(null);
+  const selectedOwnerId =
+    ownerSelection?.key === ownerSelectionKey
+      ? ownerSelection.id
+      : initialOwnerId || currentUserId;
   const [fetchedUsers, setFetchedUsers] = useState<AdminUserSummary[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -104,13 +109,13 @@ export default function CreateServerModal({
   }, [open, isAdmin, users]);
 
   useEffect(() => {
-    if (open && resourceUnavailable) {
+    if (open && hostInfo && resourceUnavailable) {
       void showWarningAlert(
         'Resource Host Penuh',
         'Sisa memori atau batas CPU host sudah habis digunakan oleh server aktif lainnya. Hentikan atau kurangi batas resource server lain terlebih dahulu.'
       );
     }
-  }, [open, resourceUnavailable]);
+  }, [open, hostInfo, resourceUnavailable]);
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +137,7 @@ export default function CreateServerModal({
 
   function handleCloseModal() {
     if (submitting) return;
+    setOwnerSelection(null);
     onClose();
   }
 
@@ -169,7 +175,7 @@ export default function CreateServerModal({
       setSelectedMemoryMb(null);
       setSelectedCpuPercent(null);
       setAutoRestart(false);
-      setSelectedOwnerId(initialOwnerId || currentUserId);
+      setOwnerSelection(null);
       void showSuccessToast(
         'Server berhasil dibuat',
         `${res.server.name} siap digunakan`
@@ -223,7 +229,9 @@ export default function CreateServerModal({
               <select
                 id="srv-owner"
                 value={effectiveOwnerId}
-                onChange={(e) => setSelectedOwnerId(e.target.value)}
+                onChange={(e) =>
+                  setOwnerSelection({ key: ownerSelectionKey, id: e.target.value })
+                }
                 className="w-full h-9 px-3 rounded-md bg-white dark:bg-[#09090B] border border-zinc-300 dark:border-zinc-800 text-xs focus:outline-none focus:border-zinc-950 dark:focus:border-zinc-400"
               >
                 {ownerOptions.map((u) => (

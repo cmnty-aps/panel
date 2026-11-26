@@ -909,7 +909,7 @@ function readLinuxProcStats(state: ManagedProcess): { cpuPercent: number; memory
   }
 
   const now = Date.now();
-  if (state.lastSampleTimeMs !== undefined && now - state.lastSampleTimeMs < 200) {
+  if (state.lastSampleTimeMs !== undefined && now - state.lastSampleTimeMs < 420) {
     return { cpuPercent: state.cpuPercent, memoryMb: state.memoryMb };
   }
 
@@ -1116,9 +1116,12 @@ function buildSafeEnv(
     CLICOLOR_FORCE: '1',
     NPM_CONFIG_COLOR: 'always',
     npm_config_color: 'always',
+    NPM_CONFIG_PROGRESS: 'false',
+    npm_config_progress: 'false',
     PY_COLORS: '1',
     PYTHONUNBUFFERED: '1',
     PYTHONIOENCODING: 'utf-8',
+    PIP_PROGRESS_BAR: 'off',
     NODE_ENV: diskEnv.NODE_ENV || 'production',
     PORT: String(server.port),
     ...diskEnv,
@@ -1289,7 +1292,7 @@ async function ensureServerDependencies(server: ServerConfig, cwd: string): Prom
 
     state.status = 'installing';
     emitStatus(server.id);
-    appendLog(server.id, 'system', 'Installing dependencies from package.json (npm install)...');
+    appendLog(server.id, 'system', 'Installing dependencies from package.json...');
 
     const netMonitor = await setupNetMonitor(server.id, state);
     try {
@@ -1297,7 +1300,7 @@ async function ensureServerDependencies(server: ServerConfig, cwd: string): Prom
         server.id,
         cwd,
         'npm',
-        ['install', '--no-audit', '--no-fund'],
+        ['install', '--no-audit', '--no-fund', '--foreground-scripts'],
         netMonitor
       );
       appendLog(server.id, 'system', 'Dependencies from package.json installed successfully.');
@@ -1368,7 +1371,7 @@ async function ensureServerDependencies(server: ServerConfig, cwd: string): Prom
         server.id,
         cwd,
         venvPip,
-        ['install', '--no-cache-dir', '-r', 'requirements.txt'],
+        ['install', '--no-cache-dir', '--progress-bar=off', '-r', 'requirements.txt'],
         netMonitor
       );
       appendLog(server.id, 'system', 'Dependencies from requirements.txt installed into .venv.');
@@ -1380,7 +1383,7 @@ async function ensureServerDependencies(server: ServerConfig, cwd: string): Prom
         server.id,
         cwd,
         'pip3',
-        ['install', '--no-cache-dir', '--target', '.py_packages', '-r', 'requirements.txt'],
+        ['install', '--no-cache-dir', '--progress-bar=off', '--target', '.py_packages', '-r', 'requirements.txt'],
         netMonitor
       );
       appendLog(server.id, 'system', 'Dependencies from requirements.txt installed successfully.');
@@ -1392,7 +1395,7 @@ async function ensureServerDependencies(server: ServerConfig, cwd: string): Prom
         server.id,
         cwd,
         'python3',
-        ['-m', 'pip', 'install', '--no-cache-dir', '--target', '.py_packages', '-r', 'requirements.txt'],
+        ['-m', 'pip', 'install', '--no-cache-dir', '--progress-bar=off', '--target', '.py_packages', '-r', 'requirements.txt'],
         netMonitor
       );
       appendLog(server.id, 'system', 'Dependencies from requirements.txt installed successfully.');
@@ -1452,6 +1455,26 @@ function resolveNodeExecutable(cwd: string, requestedExecutable: string): string
   return requestedExecutable;
 }
 
+function waitStartupStep(ms: number, state: ManagedProcess): Promise<boolean> {
+  if (state.manualStop) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    setTimeout(() => {
+      resolve(!state.manualStop);
+    }, ms);
+  });
+}
+
+function abortStartupBeforeSpawn(serverId: string, state: ManagedProcess): void {
+  cleanupNetMonitor(state);
+  state.status = 'stopped';
+  state.pid = null;
+  state.startedAtMs = null;
+  state.cpuPercent = 0;
+  state.memoryMb = 0;
+  appendLog(serverId, 'system', 'Server marked as offline...');
+  emitStatus(serverId);
+}
+
 async function launchServerProcess(
   server: ServerConfig,
   cwd: string,
@@ -1461,21 +1484,55 @@ async function launchServerProcess(
   const serverId = server.id;
   const state = getOrCreateState(serverId);
 
+  if (!(await waitStartupStep(140, state))) {
+    abortStartupBeforeSpawn(serverId, state);
+    return;
+  }
+  appendLog(serverId, 'system', 'Checking server disk space usage, this could take a few seconds...');
+  try {
+    fs.statfsSync(cwd);
+  } catch {
+  }
+
+  if (!(await waitStartupStep(160, state))) {
+    abortStartupBeforeSpawn(serverId, state);
+    return;
+  }
+  appendLog(serverId, 'system', 'Updating process configuration files...');
+  try {
+    readServerDotEnv(serverId);
+  } catch {
+  }
+
+  if (!(await waitStartupStep(160, state))) {
+    abortStartupBeforeSpawn(serverId, state);
+    return;
+  }
+  appendLog(serverId, 'system', 'Ensuring file permissions are set correctly, this could take a few seconds...');
+  try {
+    fs.accessSync(cwd, fs.constants.R_OK | fs.constants.W_OK);
+  } catch {
+  }
+
+  if (!(await waitStartupStep(140, state))) {
+    abortStartupBeforeSpawn(serverId, state);
+    return;
+  }
+
   if (!skipInstallCheck) {
     try {
       await ensureServerDependencies(server, cwd);
     } catch {
       return;
     }
+    if (!(await waitStartupStep(140, state))) {
+      abortStartupBeforeSpawn(serverId, state);
+      return;
+    }
   }
 
   if (state.manualStop) {
-    state.status = 'stopped';
-    state.pid = null;
-    state.startedAtMs = null;
-    state.cpuPercent = 0;
-    state.memoryMb = 0;
-    emitStatus(serverId);
+    abortStartupBeforeSpawn(serverId, state);
     return;
   }
 
@@ -1490,15 +1547,16 @@ async function launchServerProcess(
   const netMonitor = await setupNetMonitor(serverId, state);
 
   if (state.manualStop) {
-    cleanupNetMonitor(state);
-    state.status = 'stopped';
-    state.pid = null;
-    state.startedAtMs = null;
-    emitStatus(serverId);
+    abortStartupBeforeSpawn(serverId, state);
     return;
   }
 
   appendLog(serverId, 'system', `container@cmnty~ ${server.startupCommand}`);
+
+  if (!(await waitStartupStep(120, state))) {
+    abortStartupBeforeSpawn(serverId, state);
+    return;
+  }
 
   const child = spawn(launchExecutable, parsed.args, {
     cwd,
@@ -1635,9 +1693,6 @@ export async function startServerProcess(serverId: string): Promise<ServerRuntim
   emitStatus(serverId);
 
   appendLog(serverId, 'system', 'Server marked as starting...');
-  appendLog(serverId, 'system', 'Checking server disk space usage, this could take a few seconds...');
-  appendLog(serverId, 'system', 'Updating process configuration files...');
-  appendLog(serverId, 'system', 'Ensuring file permissions are set correctly, this could take a few seconds...');
 
   let cwd: string;
   let parsed: ReturnType<typeof parseSafeStartupCommand>;
