@@ -67,8 +67,8 @@ if [ "$TOTAL_MEM_MB" -lt 2048 ] && [ "$TOTAL_SWAP_MB" -lt 512 ] && [ ! -f "/swap
     rm -f /swapfile || true
 fi
 
-rm -rf .next
-npm install --include=dev --include=optional --no-audit --no-fund
+rm -rf .next node_modules
+npm install --include=dev --include=optional --maxsockets=3 --no-audit --no-fund
 NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}" npm run build
 
 mkdir -p "${APP_DIR}/data/servers"
