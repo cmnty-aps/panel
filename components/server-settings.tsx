@@ -200,7 +200,7 @@ export default function ServerSettingsTab({
           <div className="flex items-center gap-2 pb-3 border-b border-zinc-200 dark:border-zinc-800">
             <Terminal className="w-4 h-4 text-zinc-400" />
             <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
-              Startup &amp; Perintah Eksekusi
+              Startup Command
             </h3>
           </div>
 
