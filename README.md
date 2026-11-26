@@ -99,7 +99,7 @@ docker run -d \
 Jalankan instalasi otomatis sebagai `root` atau melalui `sudo` untuk memprovisi Node.js 22 LTS, Python 3, `pip`, `venv`, swap (jika RAM < 2 GB), build produksi, layanan `systemd`, dan deteksi otomatis URL IPv4 publik VPS:
 
 ```bash
-git clone <url-repositori-anda> cmnty
+git clone https://github.com/cmnty-aps/panel cmnty
 cd cmnty
 sudo bash install.sh
 ```
